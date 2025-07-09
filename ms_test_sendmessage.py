@@ -1,7 +1,11 @@
 import json
 import re
+import sys
 import aiohttp
 import asyncio
+import ast
+
+from datetime import datetime
 
 
 def read_txt(file_path):
@@ -48,7 +52,7 @@ async def fetch(session, method:str, url:str, payload, header=None):
         return None
 
 
-async def main(my_data_list:list or int, method:str, base_url:str, login_url:str, my_login_data:dict, my_header=None):
+async def main(my_data_list:list or int, method:str, base_url:str, login_url:str, my_login_data:dict, my_header=None, request_times=200):
     """
     :param my_data_list: 循环数据列表
     :param method: 请求方式
@@ -56,6 +60,7 @@ async def main(my_data_list:list or int, method:str, base_url:str, login_url:str
     :param login_url: 接口api
     :param my_login_data: 请求参数
     :param my_header: 请求头
+    :param request_times: 没有数据list时默认请求次数
     :return:
     """
 
@@ -117,13 +122,13 @@ def coroutines_reuqest(data_list_final:list or int, my_method:str, base_domain:s
             if not isinstance(int(data_list_final), int):
                 raise ValueError("data_list 必须是列表类型或者整数类型")
     if not isinstance(my_method, str) or my_method.upper() not in ['POST', 'GET']:
-        raise ValueError("my_method 必须是 'POST' 或 'GET' 字符串")
+        raise ValueError("request_method 必须是 'POST' 或 'GET' 字符串")
     if not isinstance(base_domain, str):
-        raise ValueError("base_domain 必须是字符串类型")
+        raise ValueError("base 必须是字符串类型")
     if not isinstance(api_url, str):
-        raise ValueError("api_url 必须是字符串类型")
+        raise ValueError("url 必须是字符串类型")
     if not isinstance(request_data, dict):
-        raise ValueError("request_data 必须是字典类型")
+        raise ValueError("login_data 必须是字典类型")
     if header1 is not None:
         if not isinstance(header1, dict):
             raise ValueError("headers 必须是字典类型")
@@ -133,37 +138,27 @@ def coroutines_reuqest(data_list_final:list or int, my_method:str, base_domain:s
 
 
 if __name__ == '__main__':
-    # user_list = ['100044752', '100044753']
-    data_list = read_txt('user.txt')
-    request_method = 'post'
-    base = "http://47.83.162.112"
-    url = "/api/im/session/send_message"
-    login_data = {
-        "content": "{\"emotionId\":34}",
-        "fromUid":100047838,
-        "isIncludeSender": 1,
-        "messageType": "app:emotion",
-        "target": "#man#"
-    }
-    header = {
-        "token": "eyJhbGciOiJIUzI1NiJ9.eyJqdGkiOiI2ZmEyNmM4My1hM2E0LTQ3OTktOWVmZC05YmQzNWUyZDhlNmIiLCJpYXQiOjE3NTE5Njk1NTgsImlzcyI6IndlcGFydHktZ2F0ZXdheSIsInN1YiI6IntcInVpZFwiOjEwMDA0NzgzNixcIlJlZ2lvblwiOlwiQ05cIn0iLCJleHAiOjE3NTQ1NjE1NTh9.oGBjMrsymNK4w3VcokhNqyp-iLfxAbFTmul-468UN6I",
-        "device_id": "4e74efec-189b-47d6-b096-7b3529746e67",
-        "new_device_id": "11009",
-        "package_name": "com.partyjoy.yoki",
-        "version_code": "17",
-        "language_code": "zh",
-        "lang_country_code": "CN",
-        "country_code": "CN",
-        "region": "CN",
-        "device": "Android",
-        "platform": "android",
-        "channel": "google-play",
-        "from_page": "com.adealink.weparty.message.conversation.ConversationActivity",
-        "req_id": "bbd84549-f460-480f-b328-a2fadf98320f",
-        "app_name": "yoki",
-        "Content-Type": "application/json; charset=UTF-8",
-        "Host": "47.83.162.112",
-        "User-Agent": "okhttp/4.12.0"
-    }
-    coroutines_reuqest(data_list_final=data_list[:20], my_method=request_method, base_domain=base, api_url=url, request_data=login_data,
-                     header1=header)
+    # data_list = ['100044752', '100044753', '100044754', '100044755', '100044756', '100044757', '100044758']
+    # data_list = read_txt('user.txt')
+    # 请求示例：
+    # ['100044752', '100044753', '100044754', '100044755', '100044756', '100044757', '100044758']
+    # post
+    # http://47.83.162.112
+    # /api/im/session/send_message
+    # {"content": "{\"emotionId\":34}", "fromUid": 100047838, "isIncludeSender": 1, "messageType": "app:emotion", "target": "#man#"}
+    # {"token": "eyJhbGciOiJIUzI1NiJ9.eyJqdGkiOiI2ZmEyNmM4My1hM2E0LTQ3OTktOWVmZC05YmQzNWUyZDhlNmIiLCJpYXQiOjE3NTE5Njk1NTgsImlzcyI6IndlcGFydHktZ2F0ZXdheSIsInN1YiI6IntcInVpZFwiOjEwMDA0NzgzNixcIlJlZ2lvblwiOlwiQ05cIn0iLCJleHAiOjE3NTQ1NjE1NTh9.oGBjMrsymNK4w3VcokhNqyp-iLfxAbFTmul-468UN6I","device_id": "4e74efec-189b-47d6-b096-7b3529746e67", "new_device_id": "11009","package_name": "com.partyjoy.yoki", "version_code": "17", "language_code": "zh", "lang_country_code": "CN","country_code": "CN", "region": "CN", "device": "Android", "platform": "android", "channel": "google-play","from_page": "com.adealink.weparty.message.conversation.ConversationActivity","req_id": "bbd84549-f460-480f-b328-a2fadf98320f", "app_name": "yoki","Content-Type": "application/json; charset=UTF-8", "Host": "47.83.162.112", "User-Agent": "okhttp/4.12.0"}
+    data_list = ast.literal_eval(sys.argv[1])
+    request_method = sys.argv[2]
+    base = sys.argv[3]
+    url = sys.argv[4]
+    login_data = json.loads(sys.argv[5].replace("'", '"'))
+    header = json.loads(sys.argv[6].replace("'", '"'))
+    try:
+        start_time = int(datetime.now().timestamp() * 1000)
+        coroutines_reuqest(data_list_final=data_list, my_method=request_method, base_domain=base, api_url=url, request_data=login_data,
+                         header1=header)
+        stop_time = int(datetime.now().timestamp() * 1000)
+        print(f'请求耗时: {stop_time - start_time}ms')
+    except Exception as e:
+        # 捕获并打印运行时的任何异常
+        print(f"运行报错: {e}")
