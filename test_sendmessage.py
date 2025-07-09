@@ -1,11 +1,7 @@
 import json
 import re
-
 import aiohttp
 import asyncio
-
-import uuid
-import random
 
 
 def read_txt(file_path):
@@ -21,16 +17,16 @@ def read_txt(file_path):
 
     return all_lines
 
-async def fetch(session, method:str, url:str, playload, header=None):
+async def fetch(session, method:str, url:str, payload, header=None):
     if header:
         if method.upper() == 'POST':
-            async with session.post(url,headers=header,json=playload) as response:
+            async with session.post(url,headers=header,json=payload) as response:
                 response_json = await response.json()  # 获取响应的 JSON 数据
                 if response.status != 200:
                     raise Exception(f"请求失败，状态码: {response.status}, 响应内容: {response_json}")
                 return response_json
         elif  method.upper() == 'GET':
-            async with session.get(url,headers=header,data=playload) as response:
+            async with session.get(url,headers=header,data=payload) as response:
                 response_json = await response.json()  # 获取响应的 JSON 数据
                 if response.status != 200:
                     raise Exception(f"请求失败，状态码: {response.status}, 响应内容: {response_json}")
@@ -38,13 +34,13 @@ async def fetch(session, method:str, url:str, playload, header=None):
         return None
     else:
         if method.upper() == 'POST':
-            async with session.post(url,json=playload) as response:
+            async with session.post(url,json=payload) as response:
                 response_json = await response.json()  # 获取响应的 JSON 数据
                 if response.status != 200:
                     raise Exception(f"请求失败，状态码: {response.status}, 响应内容: {response_json}")
                 return response_json
         elif  method.upper() == 'GET':
-            async with session.get(url,data=playload) as response:
+            async with session.get(url,data=payload) as response:
                 response_json = await response.json()  # 获取响应的 JSON 数据
                 if response.status != 200:
                     raise Exception(f"请求失败，状态码: {response.status}, 响应内容: {response_json}")
@@ -52,30 +48,55 @@ async def fetch(session, method:str, url:str, playload, header=None):
         return None
 
 
-async def main(data_list:list, method:str, base_url:str, login_url:str, login_data:dict, my_header=None):
+async def main(my_data_list:list, method:str, base_url:str, login_url:str, my_login_data:dict, my_header=None, request_times=200):
     """
-    :param my_header: 请求头
+    :param my_data_list: 循环数据列表
     :param method: 请求方式
     :param base_url: 域名
     :param login_url: 接口api
-    :param data_list: 循环数据列表
+    :param my_login_data: 请求参数
+    :param my_header: 请求头
+    :param request_times: 没有数据list时默认请求次数
     :return:
     """
 
     async with aiohttp.ClientSession() as session:
         # tasks = [fetch(session, url) for url in urls]
+        final_url = base_url + login_url
         tasks = []
-        for account in data_list:
-            # 请求参数
-            loginPayload = json.dumps(login_data)
-            new_loginPayload = re.findall(r'#(.*?)#', loginPayload)
-            for i in new_loginPayload:
-                loginPayload = loginPayload.replace(f'#{i}#', f'{account}')
-            loginPayload = json.loads(loginPayload)
-            # 请求头
-            head = my_header
-            tasks.append(fetch(session,method=method, url=base_url + login_url, playload=loginPayload, header=head))
-        results = await asyncio.gather(*tasks)
+        data_need_replace = len(re.findall(r'#.*?#', json.dumps(my_login_data)))
+        header_need_replace = len(re.findall(r'#.*?#', json.dumps(my_header)))
+        if data_need_replace > 0 and header_need_replace == 0:
+            for account in my_data_list:
+                # 请求参数替换
+                login_payload = json.dumps(my_login_data)
+                match_field = re.findall(r'#(.*?)#', login_payload)
+                for i in match_field:
+                    login_payload = login_payload.replace(f'#{i}#', f'{account}')
+                login_payload = json.loads(login_payload)
+                # 请求头
+                head = my_header
+                tasks.append(
+                    fetch(session, method=method, url=final_url, payload=login_payload, header=head))
+            results = await asyncio.gather(*tasks)
+        elif data_need_replace == 0 and header_need_replace > 0:
+            for account in my_data_list:
+                # 请求头替换
+                header_payload = json.dumps(my_header)
+                match_field = re.findall(r'#(.*?)#', header_payload)
+                for i in match_field:
+                    header_payload = header_payload.replace(f'#{i}#', f'{account}')
+                header_payload = json.loads(header_payload)
+                tasks.append(
+                    fetch(session, method=method, url=final_url, payload=my_login_data, header=header_payload))
+            results = await asyncio.gather(*tasks)
+        elif data_need_replace == 0 and header_need_replace == 0:
+            tasks = [fetch(session, method=method, url=final_url, payload=my_login_data, header=my_header) for final_url in final_url*request_times]
+            results = await asyncio.gather(*tasks)
+        elif data_need_replace > 0 and header_need_replace > 0:
+            raise Exception('不支持请求参数和请求头中同时存在#字符！！')
+        else:
+            raise Exception('未考虑到的特殊请求数据！！')
         # 写入文件
         for result in results:
             # with open('result.txt','a+') as f:
@@ -86,25 +107,40 @@ async def main(data_list:list, method:str, base_url:str, login_url:str, login_da
             #     f.write(f'{result['data']['userInfo']['uid']}\n')
             print(f'response result: {result}')
 
-def coroutines_reuqest(data_list_final:list, my_method:str, base:str, api_url:str, request_data:dict, header1=None):
-    asyncio.run(main(data_list=data_list_final, method=my_method, base_url=base, login_url=api_url, login_data=request_data,
+def coroutines_reuqest(data_list_final:list, my_method:str, base_domain:str, api_url:str, request_data:dict, header1=None):
+    # 参数格式校验
+    if not isinstance(data_list_final, list):
+        raise ValueError("data_list 必须是列表类型")
+    if not isinstance(my_method, str) or my_method.upper() not in ['POST', 'GET']:
+        raise ValueError("my_method 必须是 'POST' 或 'GET' 字符串")
+    if not isinstance(base_domain, str):
+        raise ValueError("base_domain 必须是字符串类型")
+    if not isinstance(api_url, str):
+        raise ValueError("api_url 必须是字符串类型")
+    if not isinstance(request_data, dict):
+        raise ValueError("request_data 必须是字典类型")
+    if header1 is not None and not isinstance(header1, dict):
+        raise ValueError("headers 必须是字典类型")
+
+    asyncio.run(main(my_data_list=data_list_final, method=my_method, base_url=base_domain, login_url=api_url, my_login_data=request_data,
                      my_header=header1))
 
+
 if __name__ == '__main__':
-    user_list = ['100044752', '100044753']
+    # user_list = ['100044752', '100044753']
     data_list = read_txt('user.txt')
     request_method = 'post'
     base = "http://47.83.162.112"
     url = "/api/im/session/send_message"
     login_data = {
         "content": "{\"emotionId\":34}",
-        "fromUid":100047493, #100044752
+        "fromUid":100047838,
         "isIncludeSender": 1,
         "messageType": "app:emotion",
-        "target": "#man#" #100046401
+        "target": "#man#"
     }
     header = {
-        "token": "eyJhbGciOiJIUzI1NiJ9.eyJqdGkiOiIxZmNjZWU0OS04NDNjLTRhZDEtOGI1Yy05ODJlZmM1OWNiNGEiLCJpYXQiOjE3NTA4NDM1NDQsImlzcyI6IndlcGFydHktZ2F0ZXdheSIsInN1YiI6IntcInVpZFwiOjEwMDA0NTg4MyxcImNvdW50cnlcIjpcIkNOXCIsXCJSZWdpb25cIjpcIkNOXCJ9IiwiZXhwIjoxNzUzNDM1NTQ0fQ.Xo-eZP-AVNrUHtHcYIhhLeMFj-sfsue9pWuZvcd-m6s",
+        "token": "eyJhbGciOiJIUzI1NiJ9.eyJqdGkiOiI2ZmEyNmM4My1hM2E0LTQ3OTktOWVmZC05YmQzNWUyZDhlNmIiLCJpYXQiOjE3NTE5Njk1NTgsImlzcyI6IndlcGFydHktZ2F0ZXdheSIsInN1YiI6IntcInVpZFwiOjEwMDA0NzgzNixcIlJlZ2lvblwiOlwiQ05cIn0iLCJleHAiOjE3NTQ1NjE1NTh9.oGBjMrsymNK4w3VcokhNqyp-iLfxAbFTmul-468UN6I",
         "device_id": "4e74efec-189b-47d6-b096-7b3529746e67",
         "new_device_id": "11009",
         "package_name": "com.partyjoy.yoki",
@@ -123,7 +159,5 @@ if __name__ == '__main__':
         "Host": "47.83.162.112",
         "User-Agent": "okhttp/4.12.0"
     }
-    coroutines_reuqest(data_list_final=data_list[:50], my_method=request_method, base=base, api_url=url, request_data=login_data,
+    coroutines_reuqest(data_list_final=data_list[:20], my_method=request_method, base_domain=base, api_url=url, request_data=login_data,
                      header1=header)
-    # with open('token.txt','a+') as f:
-    #     f.write('11111')
